@@ -44,19 +44,19 @@ type CanvasCard = { id: string; label: string; title: string; body: string; tone
 
 const workspaceCards: Record<WorkspaceMode, CanvasCard[]> = {
   school: [
-    { id: "capture", label: "Lesson", title: "Photosynthesis, made visual", body: "Build a concept map from class notes and source material.", tone: "accent", position: "left-[46%] top-32" },
-    { id: "chat", label: "Study with AI", title: "Create a five-question quiz", body: "Nano adapts questions to the material already on the board.", tone: "blue", position: "left-[62%] top-56" },
-    { id: "transform", label: "Assignment", title: "Turn research into an outline", body: "Group evidence, claims, and sources before drafting.", tone: "ink", position: "left-24 top-[46%]" },
+    { id: "capture", label: "Lesson", title: "Photosynthesis, made visual", body: "Build a concept map from class notes and source material.", tone: "accent", position: "left-4 top-[43%] sm:left-[46%] sm:top-32" },
+    { id: "chat", label: "Study with AI", title: "Create a five-question quiz", body: "Nano adapts questions to the material already on the board.", tone: "blue", position: "right-4 top-[59%] sm:right-auto sm:left-[62%] sm:top-56" },
+    { id: "transform", label: "Assignment", title: "Turn research into an outline", body: "Group evidence, claims, and sources before drafting.", tone: "ink", position: "left-4 top-[75%] sm:left-24 sm:top-[46%]" },
   ],
   business: [
-    { id: "capture", label: "Customer", title: "Voice notes become insights", body: "Capture interviews and group recurring customer needs.", tone: "accent", position: "left-[46%] top-32" },
-    { id: "chat", label: "AI Strategy", title: "Summarize the opportunity", body: "Turn the selected cluster into a one-page business brief.", tone: "blue", position: "left-[62%] top-56" },
-    { id: "transform", label: "Plan", title: "Shape the next experiment", body: "Convert assumptions into owners, actions, and deadlines.", tone: "ink", position: "left-24 top-[46%]" },
+    { id: "capture", label: "Customer", title: "Voice notes become insights", body: "Capture interviews and group recurring customer needs.", tone: "accent", position: "left-4 top-[43%] sm:left-[46%] sm:top-32" },
+    { id: "chat", label: "AI Strategy", title: "Summarize the opportunity", body: "Turn the selected cluster into a one-page business brief.", tone: "blue", position: "right-4 top-[59%] sm:right-auto sm:left-[62%] sm:top-56" },
+    { id: "transform", label: "Plan", title: "Shape the next experiment", body: "Convert assumptions into owners, actions, and deadlines.", tone: "ink", position: "left-4 top-[75%] sm:left-24 sm:top-[46%]" },
   ],
   company: [
-    { id: "capture", label: "Meeting", title: "Decisions stay with the work", body: "Capture decisions, owners, and open questions in one place.", tone: "accent", position: "left-[46%] top-32" },
-    { id: "chat", label: "Team AI", title: "Brief every stakeholder", body: "Nano creates summaries for leadership, product, or delivery teams.", tone: "blue", position: "left-[62%] top-56" },
-    { id: "transform", label: "Project", title: "Move from plan to action", body: "Reframe the board as milestones, risks, and responsibilities.", tone: "ink", position: "left-24 top-[46%]" },
+    { id: "capture", label: "Meeting", title: "Decisions stay with the work", body: "Capture decisions, owners, and open questions in one place.", tone: "accent", position: "left-4 top-[43%] sm:left-[46%] sm:top-32" },
+    { id: "chat", label: "Team AI", title: "Brief every stakeholder", body: "Nano creates summaries for leadership, product, or delivery teams.", tone: "blue", position: "right-4 top-[59%] sm:right-auto sm:left-[62%] sm:top-56" },
+    { id: "transform", label: "Project", title: "Move from plan to action", body: "Reframe the board as milestones, risks, and responsibilities.", tone: "ink", position: "left-4 top-[75%] sm:left-24 sm:top-[46%]" },
   ],
 };
 
@@ -64,6 +64,12 @@ const workspaceCopy: Record<WorkspaceMode, { label: string; title: string; body:
   school: { label: "Classroom · 01", title: "Learn together on one living canvas", body: "Teach, research, quiz, and turn every idea into something students can see." },
   business: { label: "Business · 01", title: "Turn customer insight into your next move", body: "Explore ideas, test assumptions, and ask Nano to shape a practical plan." },
   company: { label: "Company · 01", title: "Keep every team aligned around the work", body: "Plan projects, capture decisions, and leave every meeting with clear owners." },
+};
+
+const workspaceGreeting: Record<WorkspaceMode, string> = {
+  school: "Class workspace ready. I can explain a topic, turn notes into a study plan, or build a lesson outline.",
+  business: "Business workspace ready. I can sharpen the offer, organize customer insights, or create an action plan.",
+  company: "Team workspace ready. I can summarize decisions, map a project, or turn this board into clear owners and next steps.",
 };
 
 const toolItems: { id: Tool; label: string; hint: string }[] = [
@@ -195,6 +201,10 @@ export function AirNanoBoard({ requestedThreadId }: { requestedThreadId?: string
   const switchWorkspace = (mode: WorkspaceMode) => {
     setWorkspaceMode(mode);
     setShowWorkspaceMenu(false);
+    if (activeThread) {
+      const messages = activeThread.messages.map((message, index) => index === 0 && message.role === "assistant" ? { ...message, parts: [{ type: "text" as const, text: workspaceGreeting[mode] }] as [{ type: "text"; text: string }] } : message);
+      updateThreads({ ...activeThread, mode, messages, updatedAt: new Date().toISOString() });
+    }
   };
 
   const copyShareLink = async () => {
@@ -228,7 +238,7 @@ export function AirNanoBoard({ requestedThreadId }: { requestedThreadId?: string
             <p className="truncate text-[15px] font-extrabold tracking-tight">Air Nano Board</p>
             <p className="mt-1 truncate text-[11px] font-medium text-cool">{activeThread?.title ?? "Untitled ideas"}</p>
           </div>
-          <div className="relative hidden sm:block">
+          <div className="relative">
             <Button variant="ghost" size="icon" onClick={() => setShowWorkspaceMenu((value) => !value)} aria-label="Switch workspace" className="size-8 rounded-full"><ChevronDown /></Button>
             {showWorkspaceMenu && <div className="absolute left-0 top-10 w-48 rounded-2xl glass-surface p-2 shadow-glass ring-1 ring-glass-border">
               {(["school", "business", "company"] as WorkspaceMode[]).map((mode) => <Button key={mode} variant="ghost" onClick={() => switchWorkspace(mode)} className="w-full justify-start rounded-xl capitalize"><span className="text-softblue">{mode === "school" ? <GraduationCap /> : mode === "business" ? <Building2 /> : <Users />}</span>{mode}{workspaceMode === mode && <Check className="ml-auto" />}</Button>)}
@@ -289,22 +299,22 @@ export function AirNanoBoard({ requestedThreadId }: { requestedThreadId?: string
             onPointerDown={(event) => startDragging(card.id, event)}
             onPointerMove={(event) => moveCard(card.id, event)}
             onPointerUp={() => setDraggingCard(null)}
-            className={`air-rise glass-card absolute ${card.position} w-60 rounded-3xl p-5 text-left shadow-soft ring-1 ring-glass-border transition-transform duration-300 hover:-translate-y-1 sm:w-64 ${selectedCard === card.title ? "ring-2 ring-softblue" : ""}`}
+            className={`air-rise glass-card absolute ${card.position} w-44 rounded-3xl p-4 text-left shadow-soft ring-1 ring-glass-border transition-transform duration-300 hover:-translate-y-1 sm:w-64 sm:p-5 ${selectedCard === card.title ? "ring-2 ring-softblue" : ""}`}
             style={{ animationDelay: `${index * 80}ms`, translate: `${dragOffsets[card.id]?.x ?? 0}px ${dragOffsets[card.id]?.y ?? 0}px` }}
           >
             <div className="flex items-center justify-between">
               <span className={`text-[10px] font-bold uppercase tracking-[0.18em] ${card.tone === "accent" ? "text-accent" : card.tone === "blue" ? "text-softblue" : "text-ink"}`}>{card.label}</span>
               <span className={`size-2 rounded-full ${card.tone === "accent" ? "bg-accent" : card.tone === "blue" ? "bg-softblue" : "bg-ink"}`} />
             </div>
-            <p className="mt-3 text-lg font-bold leading-tight">{card.title}</p>
-            <p className="mt-2 text-sm text-cool">{card.body}</p>
+             <p className="mt-2 text-base font-bold leading-tight sm:mt-3 sm:text-lg">{card.title}</p>
+             <p className="mt-1.5 text-xs text-cool sm:mt-2 sm:text-sm">{card.body}</p>
           </button>
         ))}
 
         <button
           type="button"
           onClick={() => { setSelectedCard("Onboarding flow v3"); setSelectedCards(["onboarding"]); setActiveTool("edit"); }}
-          className={`absolute left-[40%] top-[52%] w-56 rounded-3xl bg-softblue/10 p-5 text-left transition-shadow ${selectedCard === "Onboarding flow v3" ? "ring-2 ring-softblue" : "ring-1 ring-softblue/30"}`}
+          className={`absolute left-[40%] top-[52%] hidden w-56 rounded-3xl bg-softblue/10 p-5 text-left transition-shadow sm:block ${selectedCard === "Onboarding flow v3" ? "ring-2 ring-softblue" : "ring-1 ring-softblue/30"}`}
           aria-label="Select onboarding flow card"
         >
           <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-softblue">Selected</p>
@@ -312,22 +322,22 @@ export function AirNanoBoard({ requestedThreadId }: { requestedThreadId?: string
           {selectedCard === "Onboarding flow v3" && <><span className="absolute -left-1.5 -top-1.5 size-3 rounded-full bg-softblue ring-2 ring-paper" /><span className="absolute -right-1.5 -top-1.5 size-3 rounded-full bg-softblue ring-2 ring-paper" /><span className="absolute -bottom-1.5 -left-1.5 size-3 rounded-full bg-softblue ring-2 ring-paper" /><span className="absolute -bottom-1.5 -right-1.5 size-3 rounded-full bg-softblue ring-2 ring-paper" /></>}
         </button>
 
-        <div className="air-float absolute left-[70%] top-24 rounded-2xl glass-surface px-4 py-3 shadow-glass ring-1 ring-glass-border">
+        <div className="air-float absolute left-[70%] top-24 hidden rounded-2xl glass-surface px-4 py-3 shadow-glass ring-1 ring-glass-border sm:block">
           <p className="text-[11px] font-semibold text-cool">Ask Nano</p>
           <p className="text-sm font-bold">“Make this calmer”</p>
         </div>
-        <div className="air-float-slow absolute left-[58%] top-[64%] rounded-2xl glass-surface px-4 py-3 shadow-glass ring-1 ring-glass-border">
+        <div className="air-float-slow absolute left-[58%] top-[64%] hidden rounded-2xl glass-surface px-4 py-3 shadow-glass ring-1 ring-glass-border sm:block">
           <p className="text-[11px] font-semibold text-cool">Nano suggests</p>
           <p className="text-sm font-bold">Group into 3 themes</p>
         </div>
-        <div className="air-float absolute left-[30%] top-[70%] rounded-2xl glass-surface px-4 py-3 shadow-glass ring-1 ring-glass-border">
+        <div className="air-float absolute left-[30%] top-[70%] hidden rounded-2xl glass-surface px-4 py-3 shadow-glass ring-1 ring-glass-border sm:block">
           <p className="text-[11px] font-semibold text-cool">Pen</p>
           <p className="text-sm font-bold">Ink · 2px · warm</p>
         </div>
       </div>
 
       {activeTool === "edit" && (
-        <div className="absolute left-6 top-[62%] z-20 flex items-center gap-2 rounded-2xl glass-surface px-3 py-2 shadow-glass ring-1 ring-glass-border">
+        <div className="absolute left-6 top-[62%] z-20 hidden items-center gap-2 rounded-2xl glass-surface px-3 py-2 shadow-glass ring-1 ring-glass-border sm:flex">
           <span className="text-[11px] font-semibold text-cool">{selectedCards.length === 4 ? "4 objects selected" : "1 object selected"}</span>
           <Button
             variant="ghost"
