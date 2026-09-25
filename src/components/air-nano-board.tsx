@@ -3,11 +3,13 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
   ArrowUp,
+  Building2,
   Check,
   ChevronDown,
   Copy,
   Edit3,
   FilePlus2,
+  GraduationCap,
   Hand,
   LayoutGrid,
   MessageCircle,
@@ -18,7 +20,7 @@ import {
   Search,
   Settings2,
   Sparkles,
-  Trash2,
+  Users,
   X,
   ZoomIn,
   ZoomOut,
@@ -27,6 +29,7 @@ import { useNavigate } from "@tanstack/react-router";
 import {
   BoardMessage,
   BoardThread,
+  WorkspaceMode,
   createThread,
   ensureThreads,
   makeMessage,
@@ -37,32 +40,31 @@ import {
 
 type Tool = "pen" | "chat" | "edit" | "settings";
 
-const cards = [
-  {
-    id: "capture",
-    label: "Capture",
-    title: "Voice notes become sticky notes",
-    body: "Tap the mic, talk, and Nano drops a card where you point.",
-    tone: "accent",
-    position: "left-[46%] top-32",
-  },
-  {
-    id: "chat",
-    label: "AI Chat",
-    title: "Ask Nano to summarize a cluster",
-    body: "Select a group and get a one-line thesis in seconds.",
-    tone: "blue",
-    position: "left-[62%] top-56",
-  },
-  {
-    id: "transform",
-    label: "Transform",
-    title: "Transform selection",
-    body: "Resize, rotate, and reflow blocks with a single drag.",
-    tone: "ink",
-    position: "left-24 top-[46%]",
-  },
-];
+const workspaceCards: Record<WorkspaceMode, typeof baseCards> = {
+  school: [
+    { id: "capture", label: "Lesson", title: "Photosynthesis, made visual", body: "Build a concept map from class notes and source material.", tone: "accent", position: "left-[46%] top-32" },
+    { id: "chat", label: "Study with AI", title: "Create a five-question quiz", body: "Nano adapts questions to the material already on the board.", tone: "blue", position: "left-[62%] top-56" },
+    { id: "transform", label: "Assignment", title: "Turn research into an outline", body: "Group evidence, claims, and sources before drafting.", tone: "ink", position: "left-24 top-[46%]" },
+  ],
+  business: [
+    { id: "capture", label: "Customer", title: "Voice notes become insights", body: "Capture interviews and group recurring customer needs.", tone: "accent", position: "left-[46%] top-32" },
+    { id: "chat", label: "AI Strategy", title: "Summarize the opportunity", body: "Turn the selected cluster into a one-page business brief.", tone: "blue", position: "left-[62%] top-56" },
+    { id: "transform", label: "Plan", title: "Shape the next experiment", body: "Convert assumptions into owners, actions, and deadlines.", tone: "ink", position: "left-24 top-[46%]" },
+  ],
+  company: [
+    { id: "capture", label: "Meeting", title: "Decisions stay with the work", body: "Capture decisions, owners, and open questions in one place.", tone: "accent", position: "left-[46%] top-32" },
+    { id: "chat", label: "Team AI", title: "Brief every stakeholder", body: "Nano creates summaries for leadership, product, or delivery teams.", tone: "blue", position: "left-[62%] top-56" },
+    { id: "transform", label: "Project", title: "Move from plan to action", body: "Reframe the board as milestones, risks, and responsibilities.", tone: "ink", position: "left-24 top-[46%]" },
+  ],
+};
+
+const baseCards = [] as { id: string; label: string; title: string; body: string; tone: string; position: string }[];
+
+const workspaceCopy: Record<WorkspaceMode, { label: string; title: string; body: string }> = {
+  school: { label: "Classroom · 01", title: "Learn together on one living canvas", body: "Teach, research, quiz, and turn every idea into something students can see." },
+  business: { label: "Business · 01", title: "Turn customer insight into your next move", body: "Explore ideas, test assumptions, and ask Nano to shape a practical plan." },
+  company: { label: "Company · 01", title: "Keep every team aligned around the work", body: "Plan projects, capture decisions, and leave every meeting with clear owners." },
+};
 
 const toolItems: { id: Tool; label: string; hint: string }[] = [
   { id: "pen", label: "Pen", hint: "Draw on the board" },
@@ -99,6 +101,12 @@ export function AirNanoBoard({ requestedThreadId }: { requestedThreadId?: string
   const [selectedCards, setSelectedCards] = useState<string[]>(["onboarding"]);
   const [dragOffsets, setDragOffsets] = useState<Record<string, { x: number; y: number }>>({});
   const [draggingCard, setDraggingCard] = useState<string | null>(null);
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("business");
+  const [showWorkspaceMenu, setShowWorkspaceMenu] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -109,6 +117,8 @@ export function AirNanoBoard({ requestedThreadId }: { requestedThreadId?: string
       : stored[0]?.id;
     if (nextId && nextId !== requestedThreadId) void navigate({ to: "/$threadId", params: { threadId: nextId }, replace: true });
     setActiveThreadId(nextId ?? "");
+    const nextThread = stored.find((thread) => thread.id === nextId);
+    if (nextThread?.mode) setWorkspaceMode(nextThread.mode);
   }, [navigate, requestedThreadId]);
 
   const activeThread = useMemo(
@@ -117,12 +127,14 @@ export function AirNanoBoard({ requestedThreadId }: { requestedThreadId?: string
   );
 
   const openThread = (threadId: string) => {
+    const thread = threads.find((item) => item.id === threadId);
+    if (thread?.mode) setWorkspaceMode(thread.mode);
     setActiveThreadId(threadId);
     void navigate({ to: "/$threadId", params: { threadId } });
   };
 
   const newBoard = () => {
-    const next = createThread();
+    const next = createThread(workspaceMode);
     const nextThreads = [next, ...threads];
     setThreads(nextThreads);
     writeThreads(nextThreads);
@@ -141,7 +153,7 @@ export function AirNanoBoard({ requestedThreadId }: { requestedThreadId?: string
     const assistantMessage = makeMessage("assistant", nanoReply(text, selectedCard));
     const updated: BoardThread = {
       ...activeThread,
-      title: activeThread.title === "Untitled ideas" ? text.slice(0, 28) : activeThread.title,
+      title: activeThread.title.startsWith("New ") ? text.slice(0, 28) : activeThread.title,
       updatedAt: new Date().toISOString(),
       messages: [...activeThread.messages, userMessage, assistantMessage],
     };
@@ -174,6 +186,20 @@ export function AirNanoBoard({ requestedThreadId }: { requestedThreadId?: string
   };
 
   const currentMessages = activeThread?.messages ?? [];
+  const cards = workspaceCards[workspaceMode];
+  const intro = workspaceCopy[workspaceMode];
+  const visibleThreads = threads.filter((thread) => thread.title.toLowerCase().includes(searchQuery.toLowerCase()));
+
+  const switchWorkspace = (mode: WorkspaceMode) => {
+    setWorkspaceMode(mode);
+    setShowWorkspaceMenu(false);
+  };
+
+  const copyShareLink = async () => {
+    await navigator.clipboard?.writeText(window.location.href);
+    setShareCopied(true);
+    window.setTimeout(() => setShareCopied(false), 1800);
+  };
 
   return (
     <main className="relative h-screen w-full overflow-hidden board-grid font-display text-ink select-none">
@@ -184,7 +210,12 @@ export function AirNanoBoard({ requestedThreadId }: { requestedThreadId?: string
             <p className="truncate text-[15px] font-extrabold tracking-tight">Air Nano Board</p>
             <p className="mt-1 truncate text-[11px] font-medium text-cool">{activeThread?.title ?? "Untitled ideas"}</p>
           </div>
-          <ChevronDown className="hidden size-4 text-cool sm:block" />
+          <div className="relative hidden sm:block">
+            <Button variant="ghost" size="icon" onClick={() => setShowWorkspaceMenu((value) => !value)} aria-label="Switch workspace" className="size-8 rounded-full"><ChevronDown /></Button>
+            {showWorkspaceMenu && <div className="absolute left-0 top-10 w-48 rounded-2xl glass-surface p-2 shadow-glass ring-1 ring-glass-border">
+              {(["school", "business", "company"] as WorkspaceMode[]).map((mode) => <Button key={mode} variant="ghost" onClick={() => switchWorkspace(mode)} className="w-full justify-start rounded-xl capitalize"><span className="text-softblue">{mode === "school" ? <GraduationCap /> : mode === "business" ? <Building2 /> : <Users />}</span>{mode}{workspaceMode === mode && <Check className="ml-auto" />}</Button>)}
+            </div>}
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="glass" size="sm" onClick={newBoard} className="rounded-full px-3 sm:px-4">
@@ -192,17 +223,18 @@ export function AirNanoBoard({ requestedThreadId }: { requestedThreadId?: string
             <span className="hidden sm:inline">New board</span>
             <FilePlus2 className="sm:hidden" />
           </Button>
-          <Button variant="glass" size="sm" className="rounded-full px-3 sm:px-4">Share</Button>
+          <Button variant="glass" size="sm" onClick={() => setShareOpen(true)} className="rounded-full px-3 sm:px-4">Share</Button>
         </div>
       </header>
 
       <aside className="absolute left-4 top-24 z-20 hidden w-52 flex-col gap-2 rounded-[24px] glass-surface p-3 shadow-glass ring-1 ring-glass-border lg:flex">
         <div className="flex items-center justify-between px-2 pb-1">
           <span className="text-xs font-bold">Boards</span>
-          <Button variant="ghost" size="icon" aria-label="Search boards" className="size-7 rounded-full"><Search /></Button>
+           <Button variant="ghost" size="icon" onClick={() => setShowSearch((value) => !value)} aria-label="Search boards" className="size-7 rounded-full"><Search /></Button>
         </div>
+         {showSearch && <input autoFocus value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search boards" className="h-9 w-full rounded-xl bg-paper/75 px-3 text-xs outline-none ring-1 ring-glass-border focus:ring-softblue" />}
         <div className="space-y-1">
-          {threads.map((thread) => (
+           {visibleThreads.map((thread) => (
             <div key={thread.id} className="group flex items-center gap-1">
               <Button
                 variant="ghost"
@@ -223,9 +255,9 @@ export function AirNanoBoard({ requestedThreadId }: { requestedThreadId?: string
 
       <div className="absolute inset-0 z-10 overflow-hidden">
         <section className="air-rise absolute left-6 top-28 max-w-[26ch] sm:left-16">
-          <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-softblue">Idea · 01</p>
-          <h1 className="mt-3 text-4xl font-extrabold leading-none tracking-tight sm:text-5xl">Sketch the whole product in one breath</h1>
-          <p className="mt-3 max-w-[34ch] text-sm text-cool">Drag, type, and ask Nano to reshape any block. Everything stays on the sheet.</p>
+           <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-softblue">{intro.label}</p>
+           <h1 className="mt-3 text-4xl font-extrabold leading-none tracking-tight sm:text-5xl">{intro.title}</h1>
+           <p className="mt-3 max-w-[34ch] text-sm text-cool">{intro.body}</p>
         </section>
 
         {cards.map((card, index) => (
@@ -315,6 +347,14 @@ export function AirNanoBoard({ requestedThreadId }: { requestedThreadId?: string
           </div>
         </aside>
       )}
+
+      {shareOpen && <div className="absolute inset-0 z-50 grid place-items-center bg-ink/15 px-4 backdrop-blur-sm" onClick={() => setShareOpen(false)}>
+        <section className="w-full max-w-md rounded-[28px] glass-surface p-6 shadow-glass ring-1 ring-glass-border" onClick={(event) => event.stopPropagation()}>
+          <div className="flex items-start justify-between"><div><p className="text-lg font-extrabold">Share this board</p><p className="mt-1 text-sm text-cool">Invite classmates or teammates into the same workspace.</p></div><Button variant="ghost" size="icon" onClick={() => setShareOpen(false)} aria-label="Close sharing" className="rounded-full"><X /></Button></div>
+          <div className="mt-5 flex rounded-2xl bg-paper/80 p-2 ring-1 ring-glass-border"><input readOnly value={typeof window === "undefined" ? "" : window.location.href} aria-label="Board link" className="min-w-0 flex-1 bg-transparent px-2 text-xs text-cool outline-none" /><Button variant="ink" size="sm" onClick={copyShareLink} className="rounded-xl">{shareCopied ? <Check /> : <Copy />}{shareCopied ? "Copied" : "Copy link"}</Button></div>
+          <div className="mt-4 flex items-center gap-2 text-xs text-cool"><span className="flex -space-x-2"><span className="grid size-7 place-items-center rounded-full bg-softblue text-paper ring-2 ring-paper">EP</span><span className="grid size-7 place-items-center rounded-full bg-accent text-paper ring-2 ring-paper">+2</span></span> Anyone with the link can collaborate</div>
+        </section>
+      </div>}
 
       <div className="absolute bottom-6 left-4 z-20 hidden items-center gap-1 rounded-xl glass-surface p-1 shadow-glass ring-1 ring-glass-border sm:flex">
         <Button variant="ghost" size="icon" aria-label="Zoom out" onClick={() => setZoom((value) => Math.max(50, value - 10))}><ZoomOut /></Button>
