@@ -20,6 +20,7 @@ import {
   Search,
   Settings2,
   Sparkles,
+  Undo2,
   Users,
   X,
   ZoomIn,
@@ -39,8 +40,9 @@ import {
 } from "@/lib/board-storage";
 
 type Tool = "pen" | "chat" | "edit" | "settings";
+type CanvasCard = { id: string; label: string; title: string; body: string; tone: string; position: string };
 
-const workspaceCards: Record<WorkspaceMode, typeof baseCards> = {
+const workspaceCards: Record<WorkspaceMode, CanvasCard[]> = {
   school: [
     { id: "capture", label: "Lesson", title: "Photosynthesis, made visual", body: "Build a concept map from class notes and source material.", tone: "accent", position: "left-[46%] top-32" },
     { id: "chat", label: "Study with AI", title: "Create a five-question quiz", body: "Nano adapts questions to the material already on the board.", tone: "blue", position: "left-[62%] top-56" },
@@ -57,8 +59,6 @@ const workspaceCards: Record<WorkspaceMode, typeof baseCards> = {
     { id: "transform", label: "Project", title: "Move from plan to action", body: "Reframe the board as milestones, risks, and responsibilities.", tone: "ink", position: "left-24 top-[46%]" },
   ],
 };
-
-const baseCards = [] as { id: string; label: string; title: string; body: string; tone: string; position: string }[];
 
 const workspaceCopy: Record<WorkspaceMode, { label: string; title: string; body: string }> = {
   school: { label: "Classroom · 01", title: "Learn together on one living canvas", body: "Teach, research, quiz, and turn every idea into something students can see." },
@@ -107,6 +107,8 @@ export function AirNanoBoard({ requestedThreadId }: { requestedThreadId?: string
   const [searchQuery, setSearchQuery] = useState("");
   const [shareOpen, setShareOpen] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
+  const [strokes, setStrokes] = useState<{ id: string; points: { x: number; y: number }[] }[]>([]);
+  const [activeStrokeId, setActiveStrokeId] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -201,6 +203,22 @@ export function AirNanoBoard({ requestedThreadId }: { requestedThreadId?: string
     window.setTimeout(() => setShareCopied(false), 1800);
   };
 
+  const beginStroke = (event: PointerEvent<SVGSVGElement>) => {
+    if (activeTool !== "pen") return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const id = `stroke-${Date.now()}`;
+    setStrokes((current) => [...current, { id, points: [{ x: event.clientX - bounds.left, y: event.clientY - bounds.top }] }]);
+    setActiveStrokeId(id);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const continueStroke = (event: PointerEvent<SVGSVGElement>) => {
+    if (!activeStrokeId) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const point = { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
+    setStrokes((current) => current.map((stroke) => stroke.id === activeStrokeId ? { ...stroke, points: [...stroke.points, point] } : stroke));
+  };
+
   return (
     <main className="relative h-screen w-full overflow-hidden board-grid font-display text-ink select-none">
       <header className="absolute inset-x-0 top-0 z-30 flex items-center justify-between px-5 py-4 sm:px-6">
@@ -254,6 +272,9 @@ export function AirNanoBoard({ requestedThreadId }: { requestedThreadId?: string
       </aside>
 
       <div className="absolute inset-0 z-10 overflow-hidden">
+        <svg aria-label="Drawing layer" className={`absolute inset-0 z-10 size-full ${activeTool === "pen" ? "cursor-crosshair" : "pointer-events-none"}`} onPointerDown={beginStroke} onPointerMove={continueStroke} onPointerUp={() => setActiveStrokeId(null)} onPointerCancel={() => setActiveStrokeId(null)}>
+          {strokes.map((stroke) => <polyline key={stroke.id} points={stroke.points.map((point) => `${point.x},${point.y}`).join(" ")} fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-ink" />)}
+        </svg>
         <section className="air-rise absolute left-6 top-28 max-w-[26ch] sm:left-16">
            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-softblue">{intro.label}</p>
            <h1 className="mt-3 text-4xl font-extrabold leading-none tracking-tight sm:text-5xl">{intro.title}</h1>
@@ -319,6 +340,8 @@ export function AirNanoBoard({ requestedThreadId }: { requestedThreadId?: string
         </div>
       )}
 
+      {activeTool === "pen" && strokes.length > 0 && <Button variant="glass" size="sm" onClick={() => setStrokes((current) => current.slice(0, -1))} className="absolute left-6 top-[62%] z-20 rounded-full"><Undo2 /> Undo stroke</Button>}
+
       {activeTool === "settings" && (
         <aside className="absolute right-6 top-20 z-30 w-[min(18rem,calc(100vw-3rem))] rounded-[28px] glass-surface p-5 shadow-glass ring-1 ring-glass-border">
           <div className="flex items-center justify-between"><p className="text-sm font-bold">Settings</p><Button variant="ghost" size="icon" onClick={() => setActiveTool("edit")} aria-label="Close settings" className="size-7 rounded-full"><X /></Button></div>
@@ -376,7 +399,7 @@ export function AirNanoBoard({ requestedThreadId }: { requestedThreadId?: string
       </nav>
 
       <div className="absolute bottom-5 right-4 z-30 flex gap-1 lg:hidden">
-        <Button variant="glass" size="icon" onClick={() => setIsDrawing((value) => !value)} aria-label="Toggle drawing mode" className={isDrawing ? "text-softblue" : ""}><Hand /></Button>
+        <Button variant="glass" size="icon" onClick={() => { setIsDrawing((value) => !value); selectTool("pen"); }} aria-label="Toggle drawing mode" className={isDrawing ? "text-softblue" : ""}><Hand /></Button>
         <Button variant="glass" size="icon" onClick={newBoard} aria-label="Create new board"><Plus /></Button>
       </div>
     </main>
