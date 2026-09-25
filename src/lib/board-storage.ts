@@ -1,4 +1,5 @@
 export type BoardRole = "user" | "assistant";
+export type WorkspaceMode = "school" | "business" | "company";
 
 export type BoardMessage = {
   id: string;
@@ -12,6 +13,7 @@ export type BoardThread = {
   title: string;
   updatedAt: string;
   messages: BoardMessage[];
+  mode?: WorkspaceMode;
 };
 
 export const THREADS_KEY = "air-nano-board.threads";
@@ -29,16 +31,29 @@ export function makeMessage(role: BoardRole, text: string): BoardMessage {
   };
 }
 
-export function createThread(): BoardThread {
+const welcomeByMode: Record<WorkspaceMode, string> = {
+  school: "Class workspace ready. I can explain a topic, turn notes into a study plan, or build a lesson outline.",
+  business: "Business workspace ready. I can sharpen the offer, organize customer insights, or create an action plan.",
+  company: "Team workspace ready. I can summarize decisions, map a project, or turn this board into clear owners and next steps.",
+};
+
+const titleByMode: Record<WorkspaceMode, string> = {
+  school: "New class board",
+  business: "New business board",
+  company: "New team board",
+};
+
+export function createThread(mode: WorkspaceMode = "business"): BoardThread {
   const now = new Date().toISOString();
   return {
     id: makeThreadId(),
-    title: "Untitled ideas",
+    title: titleByMode[mode],
     updatedAt: now,
+    mode,
     messages: [
       makeMessage(
         "assistant",
-        "I’m Nano. Select a card, sketch an idea, or ask me to reshape the board.",
+        welcomeByMode[mode],
       ),
     ],
   };
@@ -65,7 +80,7 @@ export function writeThreads(threads: BoardThread[]) {
 export function ensureThreads() {
   const current = readThreads();
   if (current.length > 0) return current;
-  const initial = [createThread()];
+  const initial = [createThread("business")];
   writeThreads(initial);
   return initial;
 }
@@ -81,6 +96,15 @@ export function nanoReply(prompt: string, selectedLabel: string | null) {
   }
   if (normalized.includes("calm") || normalized.includes("simpl")) {
     return "Try one primary action per card, more breathing room between clusters, and a single accent color for decisions.";
+  }
+  if (normalized.includes("lesson") || normalized.includes("study") || normalized.includes("quiz")) {
+    return "I’ve organized this into a learning goal, three key ideas, a quick practice task, and a check-for-understanding question.";
+  }
+  if (normalized.includes("meeting") || normalized.includes("action") || normalized.includes("owner")) {
+    return "Here’s the decision view: one agreed outcome, three actions with owners, and the next review milestone.";
+  }
+  if (normalized.includes("customer") || normalized.includes("sales") || normalized.includes("market")) {
+    return "I grouped the opportunity into customer need, strongest proof, likely objection, and the next experiment to run.";
   }
   if (selectedLabel) {
     return `I can transform “${selectedLabel}” into a tighter brief, a task list, or a visual cluster. Which direction should I take?`;
