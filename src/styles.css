@@ -169,11 +169,10 @@
   }
 }
 
-@utility board-grid {
-  background-color: var(--color-paper);
-  background-image: linear-gradient(to right, oklch(0.18 0.014 270 / 5%) 1px, transparent 1px),
-    linear-gradient(to bottom, oklch(0.18 0.014 270 / 5%) 1px, transparent 1px);
-  background-size: 34px 34px;
+@utility board-dots {
+  background-color: oklch(1 0 0);
+  background-image: radial-gradient(oklch(0.18 0.014 270 / 16%) 1.1px, transparent 1.3px);
+  background-size: 24px 24px;
 }
 
 @utility glass-surface {
