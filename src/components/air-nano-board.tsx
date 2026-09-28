@@ -97,7 +97,7 @@ const noteStyle: Record<NoteColor, string> = {
   ink: "bg-ink text-paper ring-ink",
 };
 
-const penColors = ["var(--ink)", "var(--softblue)", "var(--accent)", "oklch(0.65 0.17 150)"];
+const penColors: string[] = ["var(--ink)", "var(--softblue)", "var(--accent)", "oklch(0.65 0.17 150)"];
 
 function messageText(message: BoardMessage) {
   return message.parts.map((part) => part.text).join("");
@@ -126,7 +126,7 @@ export function AirNanoBoard({ requestedThreadId }: { requestedThreadId?: string
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedStrokeId, setSelectedStrokeId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [penColor, setPenColor] = useState(penColors[0]);
+  const [penColor, setPenColor] = useState<string>("var(--ink)");
   const [zoom, setZoom] = useState(100);
   const [prompt, setPrompt] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
@@ -227,7 +227,7 @@ export function AirNanoBoard({ requestedThreadId }: { requestedThreadId?: string
     const final = rest.length ? rest : [{ ...createThread(mode), items: [], strokes: [] }];
     writeThreads(final);
     setThreads(final);
-    if (threadId === activeThreadId) { loadedId.current = null; openThread(final[0].id); }
+    if (threadId === activeThreadId) { loadedId.current = null; openThread(final[0]!.id); }
   };
 
   const switchWorkspace = (next: WorkspaceMode) => {
