@@ -8,13 +8,34 @@ export type BoardMessage = {
   createdAt: string;
 };
 
+export type NoteColor = "paper" | "blue" | "coral" | "ink";
+
+export type BoardItem = {
+  id: string;
+  kind: "note" | "heading" | "image";
+  x: number;
+  y: number;
+  w: number;
+  text: string;
+  color: NoteColor;
+  src?: string;
+};
+
+export type BoardStroke = { id: string; color: string; width: number; points: { x: number; y: number }[] };
+
 export type BoardThread = {
   id: string;
   title: string;
   updatedAt: string;
   messages: BoardMessage[];
   mode?: WorkspaceMode;
+  items?: BoardItem[];
+  strokes?: BoardStroke[];
 };
+
+export function makeId(prefix = "item") {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+}
 
 export const THREADS_KEY = "air-nano-board.threads";
 
