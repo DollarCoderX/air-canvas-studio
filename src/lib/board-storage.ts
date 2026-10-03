@@ -12,7 +12,8 @@ export type NoteColor = "paper" | "blue" | "coral" | "ink";
 
 export type BoardItem = {
   id: string;
-  kind: "note" | "heading" | "image";
+  kind: "note" | "heading" | "image" | "shape";
+  shape?: "rect" | "circle";
   x: number;
   y: number;
   w: number;

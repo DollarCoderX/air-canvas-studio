@@ -224,3 +224,38 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+@utility board-grid {
+  background-color: oklch(1 0 0);
+  background-image: linear-gradient(to right, oklch(0.18 0.014 270 / 6%) 1px, transparent 1px),
+    linear-gradient(to bottom, oklch(0.18 0.014 270 / 6%) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+@utility board-plain {
+  background-color: oklch(1 0 0);
+}
+
+@utility board-chalk {
+  background-color: oklch(0.32 0.05 160);
+  background-image: radial-gradient(oklch(1 0 0 / 14%) 1.1px, transparent 1.3px);
+  background-size: 24px 24px;
+}
+
+@keyframes air-reaction {
+  0% { opacity: 0; transform: translateY(0) scale(0.6); }
+  15% { opacity: 1; transform: translateY(-40px) scale(1.15); }
+  100% { opacity: 0; transform: translateY(-60vh) scale(1); }
+}
+
+@utility air-reaction {
+  animation: air-reaction 2.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+@media (pointer: fine) {
+  .air-cursor-on, .air-cursor-on * { cursor: none !important; }
+}
+
+@media print {
+  nav, header, aside { display: none !important; }
+}
