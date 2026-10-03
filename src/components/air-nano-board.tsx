@@ -451,14 +451,15 @@ export function AirNanoBoard({ requestedThreadId }: { requestedThreadId?: string
           <svg className="absolute inset-0 size-full overflow-visible">
             {strokes.map((s) => (
               <g key={s.id}>
-                <polyline points={s.points.map((p) => `${p.x},${p.y}`).join(" ")} fill="none" stroke={s.color} strokeWidth={s.width} strokeLinecap="round" strokeLinejoin="round" />
-                {tool === "select" && (
+                <polyline points={s.points.map((p) => `${p.x},${p.y}`).join(" ")} fill="none" stroke={s.color} strokeWidth={s.width} strokeOpacity={s.width >= 12 ? 0.35 : 1} strokeLinecap="round" strokeLinejoin="round" />
+                {(tool === "select" || tool === "eraser") && (
                   <polyline
                     points={s.points.map((p) => `${p.x},${p.y}`).join(" ")}
-                    fill="none" stroke="transparent" strokeWidth={18}
+                    fill="none" stroke="transparent" strokeWidth={Math.max(18, s.width + 8)}
                     className="pointer-events-auto cursor-pointer"
                     style={{ pointerEvents: "stroke" }}
-                    onPointerDown={(e) => { e.stopPropagation(); setSelectedStrokeId(s.id); setSelectedId(null); }}
+                    onPointerDown={(e) => { e.stopPropagation(); if (tool === "eraser") { setStrokes((c) => c.filter((x) => x.id !== s.id)); return; } setSelectedStrokeId(s.id); setSelectedId(null); }}
+                    onPointerEnter={(e) => { if (tool === "eraser" && e.buttons) setStrokes((c) => c.filter((x) => x.id !== s.id)); }}
                   />
                 )}
               </g>
