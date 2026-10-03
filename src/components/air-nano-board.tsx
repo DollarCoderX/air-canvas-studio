@@ -468,6 +468,14 @@ export function AirNanoBoard({ requestedThreadId }: { requestedThreadId?: string
 
           {items.map((item) => {
             const selected = selectedId === item.id;
+            if (item.kind === "shape") {
+              const border = item.color === "blue" ? "border-softblue" : item.color === "coral" ? "border-accent" : "border-ink";
+              return (
+                <div key={item.id} onPointerDown={(e) => startItemDrag(item, e)} onDoubleClick={(e) => { e.stopPropagation(); setEditingId(item.id); }} className={`air-pop pointer-events-auto absolute grid place-items-center border-[3px] ${border} ${item.shape === "circle" ? "rounded-full" : "rounded-2xl"} ${selected ? "outline-2 outline-offset-4 outline-softblue" : ""}`} style={{ left: item.x, top: item.y, width: item.w, height: item.shape === "circle" ? item.w : item.w * 0.6, outlineStyle: selected ? "solid" : undefined }}>
+                  {editingId === item.id ? <input autoFocus value={item.text} onChange={(e) => updateItem(item.id, { text: e.target.value })} onBlur={() => setEditingId(null)} onPointerDown={(e) => e.stopPropagation()} className="w-3/4 bg-transparent text-center text-sm font-bold outline-none" /> : <span className="px-2 text-center text-sm font-bold">{item.text}</span>}
+                </div>
+              );
+            }
             if (item.kind === "image") {
               return (
                 <div key={item.id} onPointerDown={(e) => startItemDrag(item, e)} className={`air-pop pointer-events-auto absolute overflow-hidden rounded-3xl bg-glass-strong shadow-soft ring-1 ${selected ? "ring-2 ring-softblue" : "ring-glass-border"} ${tool === "select" ? "cursor-grab active:cursor-grabbing" : ""}`} style={{ left: item.x, top: item.y, width: item.w }}>
@@ -659,7 +667,20 @@ export function AirNanoBoard({ requestedThreadId }: { requestedThreadId?: string
         <button type="button" onClick={() => { setPanel(panel === "ai" ? "none" : "ai"); window.requestAnimationFrame(() => textareaRef.current?.focus()); }} aria-label="Ask Nano" className={`ml-0.5 flex h-11 items-center gap-1.5 rounded-full px-4 text-sm font-semibold transition-all duration-200 hover:-translate-y-1 active:scale-95 ${panel === "ai" ? "bg-softblue text-paper shadow-soft" : "bg-softblue/12 text-softblue"}`}>
           <Sparkles className="size-4" /><span className="hidden sm:inline">Nano</span>
         </button>
+        <button type="button" onClick={() => setPaletteOpen(true)} aria-label="All tools" title="All tools (Ctrl/⌘ K)" className="ml-0.5 flex h-11 items-center gap-1.5 rounded-full bg-ink px-4 text-sm font-semibold text-paper transition-all duration-200 hover:-translate-y-1 active:scale-95">
+          <Command className="size-4" /><span className="hidden sm:inline">{commands.length} tools</span>
+        </button>
       </nav>
+
+      {spotlight && laser && (
+        <div className="pointer-events-none fixed inset-0 z-[45]" style={{ background: `radial-gradient(circle 170px at ${laser.x}px ${laser.y}px, transparent 0, transparent 160px, oklch(0.18 0.014 270 / 72%) 172px)` }} />
+      )}
     </main>
+      {split && <div className="h-full w-[min(50%,40rem)] shrink-0"><MediaPane onClose={() => setSplit(false)} /></div>}
+      {cameraOn && <CameraBubble onClose={() => setCameraOn(false)} />}
+      {paletteOpen && <CommandPalette commands={commands} onClose={() => setPaletteOpen(false)} />}
+      <Reactions items={reactions} />
+      <AirCursor tool={tool} />
+    </div>
   );
 }
