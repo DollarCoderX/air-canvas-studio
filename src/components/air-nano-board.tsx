@@ -372,15 +372,198 @@ export function AirNanoBoard({ requestedThreadId }: { requestedThreadId?: string
   const isEmpty = items.length === 0 && strokes.length === 0;
   const ModeIcon = meta.icon;
 
+  // ---------- AI agent: acts directly on the board ----------
+  const agent = async (kind: "notes" | "mindmap" | "replace" | "groups", instruction: string, label: string) => {
+    if (!activeThread || aiBusy) return;
+    const target = items.find((i) => i.id === selectedId);
+    if (kind === "replace" && !target) { setPanel("ai"); saveThread({ ...activeThread, messages: [...activeThread.messages, makeMessage("assistant", "Select a note first, then run that tool again.")] }); return; }
+    setAiBusy(true);
+    setPanel("ai");
+    let thread: BoardThread = { ...activeThread, messages: [...activeThread.messages, makeMessage("user", label)] };
+    saveThread(thread);
+    let reply = "";
+    try {
+      const system = `You are Nano, an AI agent that edits a whiteboard for ${meta.label.toLowerCase()} work. Output plain text only, no markdown, no numbering symbols, no intro sentence.${kind === "notes" ? " Output one item per line, at most 8 lines, each under 18 words." : ""}${kind === "mindmap" ? " First line: the central topic (max 4 words). Then 6 branch ideas, one per line, each under 8 words." : ""}${kind === "groups" ? " Output lines in the form 'Group name: item'. Use 2 to 4 groups." : ""}${kind === "replace" ? " Output only the rewritten text." : ""}\nBoard notes:\n${boardContext() || "(empty)"}`;
+      const input = kind === "replace" ? `${instruction}\n\nText: ${target!.text}` : instruction;
+      reply = await askPollinations(input, system);
+      const lines = reply.split("\n").map((l) => l.replace(/^\s*([-*•]|\d+[.)])\s*/, "").trim()).filter(Boolean);
+      const c = viewCenter();
+      if (kind === "notes") addLinesAsNotes(lines.slice(0, 8).join("\n"));
+      if (kind === "replace") updateItem(target!.id, { text: reply.trim() });
+      if (kind === "mindmap") {
+        const [center, ...branches] = lines;
+        const r = 270;
+        setItems((cur) => [...cur,
+          { id: makeId(), kind: "shape", shape: "circle", x: c.x - 90, y: c.y - 90, w: 180, text: center ?? "Topic", color: "blue" },
+          ...branches.slice(0, 8).map((b, i, arr) => { const a = (i / arr.length) * Math.PI * 2 - Math.PI / 2; return { id: makeId(), kind: "note" as const, x: c.x + Math.cos(a) * r - 100, y: c.y + Math.sin(a) * r * 0.8 - 40, w: 200, text: b, color: "paper" as NoteColor }; }),
+        ]);
+      }
+      if (kind === "groups") {
+        const groups = new Map<string, string[]>();
+        lines.forEach((l) => { const [g, ...rest] = l.split(":"); if (rest.length) groups.set(g.trim(), [...(groups.get(g.trim()) ?? []), rest.join(":").trim()]); });
+        const cols = Array.from(groups.entries()).slice(0, 4);
+        const colors: NoteColor[] = ["blue", "coral", "paper", "ink"];
+        setItems((cur) => [...cur, ...cols.flatMap(([g, notes], ci) => [
+          { id: makeId(), kind: "heading" as const, x: c.x - cols.length * 125 + ci * 250, y: c.y - 220, w: 230, text: g, color: colors[ci]! },
+          ...notes.slice(0, 5).map((n, ni) => ({ id: makeId(), kind: "note" as const, x: c.x - cols.length * 125 + ci * 250, y: c.y - 160 + ni * 110, w: 230, text: n, color: colors[ci]! })),
+        ])]);
+      }
+      reply = kind === "replace" ? `Updated the note:\n${reply}` : `Done — I placed this on the board:\n${reply}`;
+    } catch {
+      reply = "I couldn't reach the AI service just now. Please try again in a moment.";
+    }
+    thread = { ...thread, messages: [...thread.messages, makeMessage("assistant", reply)], updatedAt: new Date().toISOString() };
+    saveThread(thread);
+    setAiBusy(false);
+  };
+
+  const react = (emoji: string) => {
+    const id = makeId("r");
+    setReactions((r) => [...r, { id, emoji, x: 10 + Math.random() * 80 }]);
+    window.setTimeout(() => setReactions((r) => r.filter((x) => x.id !== id)), 2700);
+  };
+
+  const undo = () => {
+    if (history.current.length < 2) return;
+    future.current.push(history.current.pop()!);
+    const prev = history.current[history.current.length - 1]!;
+    restoring.current = true;
+    setItems(prev.items);
+    setStrokes(prev.strokes);
+  };
+  const redo = () => {
+    const next = future.current.pop();
+    if (!next) return;
+    history.current.push(next);
+    restoring.current = true;
+    setItems(next.items);
+    setStrokes(next.strokes);
+  };
+
+  const addAt = (partial: Omit<BoardItem, "id" | "x" | "y">) => {
+    const c = viewCenter();
+    const item = { ...partial, id: makeId(), x: c.x - partial.w / 2 + (Math.random() * 80 - 40), y: c.y - 60 + (Math.random() * 80 - 40) } as BoardItem;
+    setItems((cur) => [...cur, item]);
+    setSelectedId(item.id);
+    setTool("select");
+  };
+
+  const sel = items.find((i) => i.id === selectedId);
+  const download = (name: string, content: string, type: string) => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([content], { type }));
+    a.download = name;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  const commands: PaletteCommand[] = [
+    // Create
+    { id: "c-note", group: "Create", label: "Sticky note", hint: "T", run: () => addAt({ kind: "note", w: 220, text: "", color: "paper" }) },
+    { id: "c-blue", group: "Create", label: "Blue note", run: () => addAt({ kind: "note", w: 220, text: "", color: "blue" }) },
+    { id: "c-coral", group: "Create", label: "Coral note", run: () => addAt({ kind: "note", w: 220, text: "", color: "coral" }) },
+    { id: "c-dark", group: "Create", label: "Dark note", run: () => addAt({ kind: "note", w: 220, text: "", color: "ink" }) },
+    { id: "c-head", group: "Create", label: "Heading", run: () => addAt({ kind: "heading", w: 280, text: "Heading", color: "paper" }) },
+    { id: "c-check", group: "Create", label: "Checklist", run: () => addAt({ kind: "note", w: 240, text: "☐ Task one\n☐ Task two\n☐ Task three", color: "paper" }) },
+    { id: "c-rect", group: "Create", label: "Rectangle", run: () => addAt({ kind: "shape", shape: "rect", w: 220, text: "", color: "ink" }) },
+    { id: "c-circle", group: "Create", label: "Circle", run: () => addAt({ kind: "shape", shape: "circle", w: 160, text: "", color: "blue" }) },
+    { id: "c-date", group: "Create", label: "Date stamp", run: () => addAt({ kind: "note", w: 220, text: new Date().toLocaleString(), color: "coral" }) },
+    { id: "c-emoji", group: "Create", label: "Star sticker", run: () => addAt({ kind: "heading", w: 80, text: "⭐", color: "paper" }) },
+    { id: "c-img", group: "Create", label: "Image from link", run: () => { const src = window.prompt("Image link"); if (src) addAt({ kind: "image", w: 360, text: "Image", color: "paper", src }); } },
+    { id: "c-link", group: "Create", label: "Link card", run: () => { const url = window.prompt("Web link"); if (url) addAt({ kind: "note", w: 260, text: `🔗 ${url}`, color: "blue" }); } },
+    // Edit
+    { id: "e-undo", group: "Edit", label: "Undo", hint: "Ctrl Z", run: undo },
+    { id: "e-redo", group: "Edit", label: "Redo", hint: "Ctrl Shift Z", run: redo },
+    { id: "e-dup", group: "Edit", label: "Duplicate selected", run: () => sel && setItems((c) => [...c, { ...sel, id: makeId(), x: sel.x + 24, y: sel.y + 24 }]) },
+    { id: "e-del", group: "Edit", label: "Delete selected", hint: "Del", run: () => { if (sel) { setItems((c) => c.filter((i) => i.id !== sel.id)); setSelectedId(null); } } },
+    { id: "e-front", group: "Edit", label: "Bring to front", run: () => sel && setItems((c) => [...c.filter((i) => i.id !== sel.id), sel]) },
+    { id: "e-back", group: "Edit", label: "Send to back", run: () => sel && setItems((c) => [sel, ...c.filter((i) => i.id !== sel.id)]) },
+    { id: "e-bigger", group: "Edit", label: "Make selected bigger", run: () => sel && updateItem(sel.id, { w: Math.min(600, sel.w + 40) }) },
+    { id: "e-smaller", group: "Edit", label: "Make selected smaller", run: () => sel && updateItem(sel.id, { w: Math.max(80, sel.w - 40) }) },
+    { id: "e-snap", group: "Edit", label: "Snap everything to dots", run: () => setItems((c) => c.map((i) => ({ ...i, x: Math.round(i.x / 24) * 24, y: Math.round(i.y / 24) * 24 }))) },
+    { id: "e-tidy", group: "Edit", label: "Tidy notes into a grid", run: () => { const c = viewCenter(); setItems((cur) => cur.map((i, n) => ({ ...i, x: c.x - 500 + (n % 4) * 250, y: 120 + Math.floor(n / 4) * 150 }))); } },
+    { id: "e-clearink", group: "Edit", label: "Clear all ink", run: () => setStrokes([]) },
+    { id: "e-clearnotes", group: "Edit", label: "Clear all notes", run: () => setItems([]) },
+    { id: "e-clear", group: "Edit", label: "Clear whole board", run: () => { if (window.confirm("Clear this board?")) { setItems([]); setStrokes([]); } } },
+    // Pen
+    { id: "p-pen", group: "Pen", label: "Pen", hint: "P", run: () => { setPenWidth(3); setTool("pen"); } },
+    { id: "p-thin", group: "Pen", label: "Fine pen", run: () => { setPenWidth(1.5); setTool("pen"); } },
+    { id: "p-thick", group: "Pen", label: "Marker", run: () => { setPenWidth(6); setTool("pen"); } },
+    { id: "p-high", group: "Pen", label: "Highlighter", run: () => { setPenWidth(16); setPenColor("oklch(0.85 0.17 95)"); setTool("pen"); } },
+    { id: "p-eraser", group: "Pen", label: "Eraser", hint: "E", run: () => setTool("eraser") },
+    { id: "p-blue", group: "Pen", label: "Blue ink", run: () => { setPenColor("var(--softblue)"); setTool("pen"); } },
+    { id: "p-coral", group: "Pen", label: "Coral ink", run: () => { setPenColor("var(--accent)"); setTool("pen"); } },
+    { id: "p-white", group: "Pen", label: "Chalk white ink", run: () => { setPenColor("oklch(0.98 0 0)"); setTool("pen"); } },
+    // View
+    { id: "v-in", group: "View", label: "Zoom in", run: () => setZoom((v) => Math.min(200, v + 10)) },
+    { id: "v-out", group: "View", label: "Zoom out", run: () => setZoom((v) => Math.max(50, v - 10)) },
+    { id: "v-reset", group: "View", label: "Reset zoom", run: () => setZoom(100) },
+    { id: "v-dots", group: "View", label: "Dot background", run: () => setBg("board-dots") },
+    { id: "v-grid", group: "View", label: "Grid background", run: () => setBg("board-grid") },
+    { id: "v-plain", group: "View", label: "Plain white background", run: () => setBg("board-plain") },
+    { id: "v-chalk", group: "View", label: "Chalkboard", run: () => setBg("board-chalk") },
+    { id: "v-focus", group: "View", label: focus ? "Show menus" : "Focus mode (hide menus)", run: () => setFocus((f) => !f) },
+    { id: "v-full", group: "View", label: "Full screen", run: () => void document.documentElement.requestFullscreen?.().catch(() => undefined) },
+    { id: "v-cursor", group: "View", label: "Board tour: show shortcuts", run: () => { setPanel("ai"); saveThread({ ...activeThread!, messages: [...activeThread!.messages, makeMessage("assistant", "Shortcuts:\nV select · T note · P pen · E eraser · L laser\nCtrl/⌘ K all tools · Ctrl Z undo · Del delete\nDouble-click the board to add a note.")] }); } },
+    // Present
+    { id: "pr-present", group: "Present", label: presenting ? "Exit presentation" : "Start presentation", run: togglePresent },
+    { id: "pr-split", group: "Present", label: split ? "Close split screen" : "Split screen: board + live video", run: () => setSplit((s) => !s) },
+    { id: "pr-cam", group: "Present", label: cameraOn ? "Hide presenter camera" : "Presenter camera bubble", run: () => setCameraOn((v) => !v) },
+    { id: "pr-laser", group: "Present", label: "Laser pointer", hint: "L", run: () => setTool("laser") },
+    { id: "pr-spot", group: "Present", label: spotlight ? "Turn off spotlight" : "Spotlight around pointer", run: () => { setSpotlight((s) => !s); setTool("laser"); } },
+    { id: "pr-timer", group: "Present", label: timerOn ? "Pause timer" : "Start timer", run: () => setTimerOn((v) => !v) },
+    { id: "pr-reset", group: "Present", label: "Reset timer", run: () => { setTimer(0); setTimerOn(false); } },
+    { id: "pr-clap", group: "Present", label: "Reaction: applause 👏", run: () => react("👏") },
+    { id: "pr-heart", group: "Present", label: "Reaction: love ❤️", run: () => react("❤️") },
+    { id: "pr-party", group: "Present", label: "Reaction: celebrate 🎉", run: () => { for (let i = 0; i < 6; i++) window.setTimeout(() => react("🎉"), i * 120); } },
+    { id: "pr-idea", group: "Present", label: "Reaction: idea 💡", run: () => react("💡") },
+    // File
+    { id: "f-new", group: "File", label: "New board", run: () => newBoard() },
+    { id: "f-rename", group: "File", label: "Rename board", run: () => { const t = window.prompt("Board name", activeThread?.title); if (t && activeThread) saveThread({ ...activeThread, title: t }); } },
+    { id: "f-dupboard", group: "File", label: "Duplicate board", run: () => { const copy = { ...createThread(mode), title: `${activeThread?.title ?? "Board"} copy`, items, strokes }; const all = [copy, ...readThreads()]; writeThreads(all); setThreads(all); openThread(copy.id); } },
+    { id: "f-txt", group: "File", label: "Export notes (.txt)", run: exportBoard },
+    { id: "f-json", group: "File", label: "Export board file (.json)", run: () => download(`${activeThread?.title ?? "board"}.json`, JSON.stringify({ items, strokes }), "application/json") },
+    { id: "f-import", group: "File", label: "Import board file", run: () => { const input = document.createElement("input"); input.type = "file"; input.accept = ".json"; input.onchange = async () => { const f = input.files?.[0]; if (!f) return; try { const data = JSON.parse(await f.text()); setItems(data.items ?? []); setStrokes(data.strokes ?? []); } catch { window.alert("That file isn't a board file."); } }; input.click(); } },
+    { id: "f-print", group: "File", label: "Print / save as PDF", run: () => window.print() },
+    { id: "f-share", group: "File", label: "Share link", run: () => setShareOpen(true) },
+    { id: "f-tpl", group: "File", label: "Templates", run: () => setPanel("templates") },
+    // AI agent
+    { id: "a-brain", group: "AI agent", ai: true, label: "Brainstorm 8 ideas onto the board", run: () => void agent("notes", "Brainstorm 8 fresh ideas that build on this board.", "Brainstorm ideas") },
+    { id: "a-mind", group: "AI agent", ai: true, label: "Build a mind map", run: () => void agent("mindmap", "Create a mind map for the main topic of this board.", "Build a mind map") },
+    { id: "a-group", group: "AI agent", ai: true, label: "Sort notes into groups", run: () => void agent("groups", "Group every note on this board into themed groups.", "Sort notes into groups") },
+    { id: "a-actions", group: "AI agent", ai: true, label: "Extract action items as notes", run: () => void agent("notes", "List action items as 'Owner – task – deadline'.", "Extract action items") },
+    { id: "a-quiz", group: "AI agent", ai: true, label: "Make quiz cards", run: () => void agent("notes", "Write 6 short quiz questions with the answer in brackets.", "Make quiz cards") },
+    { id: "a-flash", group: "AI agent", ai: true, label: "Make flashcards", run: () => void agent("notes", "Write 6 flashcards as 'Term — definition'.", "Make flashcards") },
+    { id: "a-agenda", group: "AI agent", ai: true, label: "Create meeting agenda", run: () => void agent("notes", "Create a 6-item meeting agenda with minutes per item.", "Create agenda") },
+    { id: "a-slides", group: "AI agent", ai: true, label: "Turn board into slide outline", run: () => void agent("notes", "Turn this board into a 6-slide presentation outline, one slide title and key point per line.", "Slide outline") },
+    { id: "a-swot", group: "AI agent", ai: true, label: "Run a SWOT analysis", run: () => void agent("groups", "Do a SWOT analysis using groups Strengths, Weaknesses, Opportunities, Threats.", "SWOT analysis") },
+    { id: "a-risks", group: "AI agent", ai: true, label: "Find risks and blockers", run: () => void agent("notes", "List the main risks and blockers.", "Find risks") },
+    { id: "a-steps", group: "AI agent", ai: true, label: "Plan next steps", run: () => void agent("notes", "Give concrete next steps in order.", "Plan next steps") },
+    { id: "a-questions", group: "AI agent", ai: true, label: "Questions to ask the room", run: () => void agent("notes", "Write 5 discussion questions for the audience.", "Discussion questions") },
+    { id: "a-examples", group: "AI agent", ai: true, label: "Add real-world examples", run: () => void agent("notes", "Give 5 real-world examples that illustrate this board.", "Real-world examples") },
+    { id: "a-fix", group: "AI agent", ai: true, label: "Fix spelling of selected note", run: () => void agent("replace", "Fix spelling and grammar.", "Fix spelling") },
+    { id: "a-short", group: "AI agent", ai: true, label: "Shorten selected note", run: () => void agent("replace", "Rewrite this much shorter and clearer.", "Shorten note") },
+    { id: "a-expand", group: "AI agent", ai: true, label: "Expand selected note", run: () => void agent("replace", "Expand this into 3 clear sentences.", "Expand note") },
+    { id: "a-kid", group: "AI agent", ai: true, label: "Explain selected note like I'm 10", run: () => void agent("replace", "Explain this simply for a 10 year old.", "Explain simply") },
+    { id: "a-fr", group: "AI agent", ai: true, label: "Translate selected note to French", run: () => void agent("replace", "Translate to French.", "Translate to French") },
+    { id: "a-es", group: "AI agent", ai: true, label: "Translate selected note to Spanish", run: () => void agent("replace", "Translate to Spanish.", "Translate to Spanish") },
+    { id: "a-sum", group: "AI agent", ai: true, label: "Summarize board in chat", run: () => { setPanel("ai"); void runAI("Summarize this board in 4 short lines."); } },
+    { id: "a-img", group: "AI agent", ai: true, label: "Generate an illustration", run: () => { setPanel("ai"); void runAI("clean illustration of the board topic", true); } },
+    { id: "a-diagram", group: "AI agent", ai: true, label: "Generate a diagram image", run: () => { setPanel("ai"); void runAI("simple labeled educational diagram", true); } },
+    { id: "a-chat", group: "AI agent", ai: true, label: "Open Nano chat", run: () => setPanel("ai") },
+  ];
+
   const dockTools: { id: Tool; label: string; icon: typeof Type; key: string }[] = [
     { id: "select", label: "Select", icon: MousePointer2, key: "V" },
     { id: "text", label: "Note", icon: Type, key: "T" },
     { id: "pen", label: "Pen", icon: PenLine, key: "P" },
+    { id: "eraser", label: "Eraser", icon: Eraser, key: "E" },
     { id: "laser", label: "Laser", icon: Zap, key: "L" },
   ];
 
   return (
-    <main className="relative h-screen w-full overflow-hidden board-dots font-display text-ink select-none">
+    <div className="relative flex h-screen w-full overflow-hidden">
+    <main className={`relative h-full min-w-0 flex-1 overflow-hidden ${bg} font-display text-ink select-none`}>
       {!presenting && (
         <header className="absolute inset-x-0 top-0 z-30 flex items-center justify-between gap-2 px-4 py-4 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
