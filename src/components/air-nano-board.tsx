@@ -29,6 +29,8 @@ import {
   WandSparkles,
   X,
   Zap,
+  Eraser,
+  Command,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
@@ -50,8 +52,9 @@ import {
 } from "@/lib/board-storage";
 import { templateItems, templatesByMode } from "@/lib/board-templates";
 import { askPollinations, pollinationsImageUrl } from "@/lib/pollinations";
+import { AirCursor, CameraBubble, CommandPalette, MediaPane, Reactions, type Command as PaletteCommand } from "@/components/board-extras";
 
-type Tool = "select" | "text" | "pen" | "laser";
+type Tool = "select" | "text" | "pen" | "laser" | "eraser";
 type Panel = "none" | "ai" | "templates";
 
 const modeMeta: Record<WorkspaceMode, { label: string; icon: typeof Users; hint: string; actions: { label: string; prompt: string; image?: boolean }[] }> = {
@@ -144,6 +147,22 @@ export function AirNanoBoard({ requestedThreadId }: { requestedThreadId?: string
   const drawingId = useRef<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scale = zoom / 100;
+  const [penWidth, setPenWidth] = useState(3);
+  const [bg, setBg] = useState("board-dots");
+  const [focus, setFocus] = useState(false);
+  const [split, setSplit] = useState(false);
+  const [cameraOn, setCameraOn] = useState(false);
+  const [spotlight, setSpotlight] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [reactions, setReactions] = useState<{ id: string; emoji: string; x: number }[]>([]);
+  const history = useRef<{ items: BoardItem[]; strokes: BoardStroke[] }[]>([]);
+  const future = useRef<{ items: BoardItem[]; strokes: BoardStroke[] }[]>([]);
+  const restoring = useRef(false);
+  useEffect(() => {
+    if (restoring.current) { restoring.current = false; return; }
+    const h = window.setTimeout(() => { history.current = [...history.current.slice(-49), { items, strokes }]; future.current = []; }, 400);
+    return () => window.clearTimeout(h);
+  }, [items, strokes]);
 
   useEffect(() => {
     const stored = ensureThreads();
@@ -188,7 +207,8 @@ export function AirNanoBoard({ requestedThreadId }: { requestedThreadId?: string
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement;
-      if (target.tagName === "TEXTAREA" || target.tagName === "INPUT") return;
+      if ((event.metaKey || event.ctrlKey) && event.key === "k") { event.preventDefault(); setPaletteOpen(true); return; }
+    if (target.tagName === "TEXTAREA" || target.tagName === "INPUT") return;
       if (event.key === "Escape") { setPresenting(false); setPanel("none"); setSelectedId(null); setSelectedStrokeId(null); }
       if (event.key === "Delete" || event.key === "Backspace") {
         if (selectedId) { setItems((c) => c.filter((i) => i.id !== selectedId)); setSelectedId(null); }
@@ -198,6 +218,8 @@ export function AirNanoBoard({ requestedThreadId }: { requestedThreadId?: string
       if (event.key === "t") setTool("text");
       if (event.key === "p") setTool("pen");
       if (event.key === "l") setTool("laser");
+      if (event.key === "e") setTool("eraser");
+      if ((event.metaKey || event.ctrlKey) && event.key === "k") { event.preventDefault(); setPaletteOpen(true); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -262,7 +284,7 @@ export function AirNanoBoard({ requestedThreadId }: { requestedThreadId?: string
     if (tool === "pen") {
       const id = makeId("stroke");
       drawingId.current = id;
-      setStrokes((c) => [...c, { id, color: penColor, width: 3, points: [p] }]);
+      setStrokes((c) => [...c, { id, color: penColor, width: penWidth, points: [p] }]);
       event.currentTarget.setPointerCapture(event.pointerId);
       return;
     }
@@ -400,7 +422,7 @@ export function AirNanoBoard({ requestedThreadId }: { requestedThreadId?: string
       }
       if (kind === "groups") {
         const groups = new Map<string, string[]>();
-        lines.forEach((l) => { const [g, ...rest] = l.split(":"); if (rest.length) groups.set(g.trim(), [...(groups.get(g.trim()) ?? []), rest.join(":").trim()]); });
+        lines.forEach((l) => { const [g0, ...rest] = l.split(":"); const g = g0 ?? ""; if (rest.length) groups.set(g.trim(), [...(groups.get(g.trim()) ?? []), rest.join(":").trim()]); });
         const cols = Array.from(groups.entries()).slice(0, 4);
         const colors: NoteColor[] = ["blue", "coral", "paper", "ink"];
         setItems((cur) => [...cur, ...cols.flatMap(([g, notes], ci) => [
